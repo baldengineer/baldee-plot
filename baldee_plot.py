@@ -4,6 +4,8 @@ import signal  # for ctrl-c
 import sys     # call to ping
 import os      # for exit signal
 from quantiphy import Quantity  # for pretty print of eng units
+import csv     # for comma sep file
+
 from insts import instruments  # globals for VISA resource strings
 from insts import mxo4
 
@@ -88,26 +90,27 @@ def setup_scope(inst):
 		print("Failed to setup MXO4")
 		exit()
 
-def get_scope_meas(inst, voltage):
+def get_scope_meas(inst, csv, voltage):
 	mxo4.send_command(inst,"SINGLE",0.1,False)
 
 	mxo4.scale_channel(inst, "2", "4")
 
-	meas1_value = inst.query("MEAS1:RES:ACT?") # ACTual is optional
+	meas1_value = inst.query("MEAS1:RES:ACT?").strip() # ACTual is optional
 	c2_ptp = Quantity(meas1_value, "V")
 	#meas1_value = str(meas1_value).strip()
 	#print(f"C2 PTP: {c2_ptp}")
 
-	meas2_value = inst.query("MEAS2:RES:ACT?") # ACTual is optional
+	meas2_value = inst.query("MEAS2:RES:ACT?").strip() # ACTual is optional
 	c4_ptp = Quantity(meas2_value, "V")
 	#meas2_value = str(meas2_value).strip()
 	#print(f"C4 PTP: {c4_ptp}")
 
-	meas3_value = inst.query("MEAS3:RES:ACT?") # ACTual is optional
+	meas3_value = inst.query("MEAS3:RES:ACT?").strip() # ACTual is optional
 	c2_freq = Quantity(meas3_value, "Hz")
 	#meas3_value = str(meas3_value).strip()
 	#print(f"Frequency: {c2_freq}")
-	print(f"{voltage},{meas1_value.strip()},{meas2_value.strip()},{meas3_value.strip()}, ,{c2_freq}, {c2_ptp}, {c4_ptp}")
+	print(f"{voltage},{meas1_value},{meas2_value},{meas3_value}, ,{c2_freq}, {c2_ptp}, {c4_ptp}")
+	csv.writerow([voltage, meas3_value, meas1_value, meas2_value])
 
 def setup_hmc_smps(inst):
 	# for i in range(1,4):
@@ -170,46 +173,52 @@ setup_bald_func_gen(bald_func)
 
 # print("Early exit")
 # exit()
-# input voltage
-#step_size = 10
-step_size = 30
-#voltage_settings = [0.1, 0.5, 1, 2]
-voltage_settings = [0.5, 1]
-for voltage in voltage_settings:
-	#print(f"Sweeping for {voltage} V")
-	set_hmc_output_parameters(hmc_smps, 5.00, 0.025)
 
-	func_output_voltage_cmd = f"VOLT {voltage}"
-	send_command(bald_func,func_output_voltage_cmd)
-	mxo4.scale_channel(mxo4_scope, "1", "2")  # meas, channel
+# creat
+filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
+with open(filename_str, 'w', newline='') as csvfile:
+	bode_log = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+	# input voltage
+	#step_size = 10
+	step_size = 30
+	#voltage_settings = [0.1, 0.5, 1, 2]
+	voltage_settings = [0.5, 1]
 
-	time_base_scale = 4
-	for frequency in range(int(10e3),int(100e3),int(step_size * 1e3)):
-		func_command = "FREQ " + str(frequency)
-		send_command(bald_func,func_command)
-		time.sleep(0.15)
-		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-		get_scope_meas(mxo4_scope, voltage)
+	for voltage in voltage_settings:
+		#print(f"Sweeping for {voltage} V")
+		set_hmc_output_parameters(hmc_smps, 5.00, 0.025)
 
-	for frequency in range(int(100e3),int(1e6),int(step_size * 10e3)):
-		func_command = "FREQ " + str(frequency)
-		send_command(bald_func,func_command)
-		time.sleep(0.25)
-		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-		get_scope_meas(mxo4_scope, voltage)
-		#time.sleep(0.5)
+		func_output_voltage_cmd = f"VOLT {voltage}"
+		send_command(bald_func,func_output_voltage_cmd)
+		mxo4.scale_channel(mxo4_scope, "1", "2")  # meas, channel
 
-	for frequency in range(int(1e6),int(10e6),int(step_size * 100e3)):
-		func_command = "FREQ " + str(frequency)
-		send_command(bald_func,func_command)	
-		time.sleep(0.25)
-		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-		get_scope_meas(mxo4_scope, voltage)
-		#time.sleep(0.5)
+		time_base_scale = 2
+		for frequency in range(int(10e3),int(100e3),int(step_size * 1e3)):
+			func_command = "FREQ " + str(frequency)
+			send_command(bald_func,func_command)
+			time.sleep(0.15)
+			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(mxo4_scope, bode_log, voltage)
+
+		for frequency in range(int(100e3),int(1e6),int(step_size * 10e3)):
+			func_command = "FREQ " + str(frequency)
+			send_command(bald_func,func_command)
+			time.sleep(0.15)
+			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(mxo4_scope, bode_log, voltage)
+			#time.sleep(0.5)
+
+		for frequency in range(int(1e6),int(10e6),int(step_size * 100e3)):
+			func_command = "FREQ " + str(frequency)
+			send_command(bald_func,func_command)	
+			time.sleep(0.15)
+			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(mxo4_scope, bode_log, voltage)
+			#time.sleep(0.5)
 
 send_command(hmc_smps,"OUTP:MAST OFF")
 send_command(bald_func, "OUTP OFF")
-time.sleep(0.1) # return to local seems to be ingored if sent back to back
+time.sleep(0.25) # return to local seems to be ingored if sent back to back
 send_command(bald_func, "SYST:LOC")
 
 #bald_func.write("SYST:LOC")
