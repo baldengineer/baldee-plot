@@ -8,7 +8,9 @@ import csv     # for comma sep file
 
 from insts import instruments  # globals for VISA resource strings
 from insts import mxo4
+from insts import mp730028
 
+# keeping this global because it is used by everything
 rm = pyvisa.ResourceManager()
 
 # instrument ids from instruments.py
@@ -19,10 +21,13 @@ mcp_dmm    = rm.open_resource(instruments.dmm_id)
 
 # some instraments want a delay because they don't have an OPC query
 # or I am not using OPC
-#mxo4_scope.query_delay = 0.1
+#mxo4_scope.query_delay = 0.1 # implemented OPC? for MXO4
 hmc_smps.query_delay = 0.1
 mcp_dmm.query_delay = 0.1
 bald_func.query_delay = 0.1
+
+# for the DMM
+mcp_dmm.bald_func = 115200
 
 # Configure the sweep
 # freq_step_size = 1   # Unnecessarily slow scanning mechanism
@@ -35,9 +40,17 @@ csv_filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
 
 
 def main():
+	print("Setting up MXO4 ")
 	setup_scope(mxo4_scope)
+
+	print("\nSetting HMC Power Supply")
 	setup_hmc_smps(hmc_smps)
+	
+	print("\nSetting up Bald Func Gen")
 	setup_bald_func_gen(bald_func)
+
+	print("\nSetting up mp730028 DMM")
+	mp730028.setup_dmm_mp730028(mcp_dmm)
 
 	with open(csv_filename_str, 'w', newline='') as csvfile:
 		sweep_input_voltage(mxo4_scope, csvfile)
@@ -50,8 +63,9 @@ def send_command(inst, cmd, scpi_delay=0.01, debug=False):
 	if (debug): print(cmd)
 	inst.write(cmd)
 	time.sleep(scpi_delay)
-	error_str = str(inst.query("SYST:ERR?"))
-	if (debug): prinvoltage_settingst(error_str)
+	if (debug): 
+		error_str = str(inst.query("SYST:ERR?").strip())
+		print(error_str)
 	time.sleep(scpi_delay)
 	#if (debug): print("---")
 	return True
@@ -127,7 +141,7 @@ def setup_scope(inst):
 	# print("Early Exit in Scope Setup")
 	# exit()
 
-def get_scope_meas(inst, csv, voltage):
+def get_scope_meas(inst, csv, dcv_meas, voltage_setting):
 	mxo4.send_command(inst,"SINGLE",0.1,False)
 
 	mxo4.scale_channel(inst, "2", "4")
@@ -150,8 +164,8 @@ def get_scope_meas(inst, csv, voltage):
 	meas4_value = inst.query("MEAS4:RES:ACT?").strip()
 	phase_diff = meas4_value
 
-	print(f"{voltage},{meas1_value},{meas2_value},{meas3_value},{phase_diff},{c2_freq}, {c2_ptp}, {c4_ptp}")
-	csv.writerow([voltage, meas3_value, meas1_value, meas2_value, meas4_value])
+	print(f"{voltage_setting},{Quantity(dcv_meas)},{meas1_value},{meas2_value},{meas3_value},{phase_diff},{Quantity(dcv_meas,'V')},{c2_freq}, {c2_ptp}, {c4_ptp}")
+	csv.writerow([voltage_setting, Quantity(dcv_meas), meas3_value, meas1_value, meas2_value, meas4_value])
 
 def setup_hmc_smps(inst):
 	# for i in range(1,4):
@@ -180,8 +194,6 @@ def set_hmc_output_parameters(inst,volt_setting=5.55, curr_setting=0.005):
 	send_command(inst,hmc_voltage_cmd)
 	send_command(inst,hmc_current_cmd)
 	send_command(inst, "OUTP:MAST ON")
-
-
 	
 def sweep_input_voltage(inst, csvfile):
 	## Sweep frequency with different input voltages
@@ -202,16 +214,18 @@ def sweep_input_voltage(inst, csvfile):
 		for frequency in range(int(10e3),int(100e3),int(freq_step_size * 1e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)
-			#time.sleep(0.15)
+			#time.sleep(0.15) # needed this delay because scope saw wave gen turn on! removed after adding timebase change
 			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(inst, bode_log, voltage)
+			dmm_dcv = mcp_dmm.query("MEAS?").strip()
+			get_scope_meas(inst, bode_log, dmm_dcv,voltage)
 
 		for frequency in range(int(100e3),int(1e6),int(freq_step_size * 10e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)
 			#time.sleep(0.15)
 			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(inst, bode_log, voltage)
+			dmm_dcv = mcp_dmm.query("MEAS?").strip()
+			get_scope_meas(inst, bode_log, dmm_dcv, voltage)
 			#time.sleep(0.5)
 
 		for frequency in range(int(1e6),int(10e6),int(freq_step_size * 100e3)):
@@ -219,7 +233,8 @@ def sweep_input_voltage(inst, csvfile):
 			send_command(bald_func,func_command)	
 			#time.sleep(0.15)
 			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(inst, bode_log, voltage)
+			dmm_dcv = mcp_dmm.query("MEAS?").strip()
+			get_scope_meas(inst, bode_log, dmm_dcv, voltage)
 			#time.sleep(0.5)
 
 if __name__ == '__main__':
