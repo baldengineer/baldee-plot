@@ -4,30 +4,27 @@ import signal  # for ctrl-c
 import sys     # call to ping
 import os      # for exit signal
 from quantiphy import Quantity  # for pretty print of eng units
+from insts import instruments  # globals for VISA resource strings
+from insts import mxo4
 
-rm = pyvisa.ResourceManager('@py')
+rm = pyvisa.ResourceManager()
 #rm.list_resources()
 #('ASRL1::INSTR', 'ASRL2::INSTR', 'GPIB0::12::INSTR')
 
-# Windows
-# bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455::INSTR')
-# mxo4 = rm.open_resource('TCPIP::192.168.128.23::INSTR')
-# #hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
-# hmc_smps = rm.open_resource('USB0::0x0AAD::0x0135::051909041::INSTR')
-# mcp_dmm = rm.open_resource('ASRL22')
+# bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00::INSTR')
+# mxo4 = rm.open_resource('USB0::2733::407::1335.5050k04-200191::0::INSTR')
+# hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
+# mcp_dmm = rm.open_resource('ASRL/dev/ttyUSB0::INSTR')
 
-# Ubuntu
-bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00::INSTR')
-#mxo4 = rm.open_resource('TCPIP::192.168.128.23::INSTR')
-mxo4 = rm.open_resource('USB0::2733::407::1335.5050k04-200191::0::INSTR')
-hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
-#hmc_smps = rm.open_resource('USB0::0x0AAD::0x0135::051909041::INSTR')
-mcp_dmm = rm.open_resource('ASRL/dev/ttyUSB0::INSTR')
+bald_func  = rm.open_resource(instruments.func_id)
+mxo4_scope = rm.open_resource(instruments.scope_id)
+hmc_smps   = rm.open_resource(instruments.ps_id)
+mcp_dmm    = rm.open_resource(instruments.dmm_id)
 
 # some instraments want a delay because they don't have an OPC query
 # or I am not using OPC
 bald_func.query_delay = 0.1
-mxo4.query_delay = 0.1
+mxo4_scope.query_delay = 0.1
 hmc_smps.query_delay = 0.1
 mcp_dmm.query_delay = 0.1
 
@@ -58,29 +55,43 @@ def setup_bald_func_gen(inst):
 	# so baldee can touch the buttons
 	#send_command("SYST:LOC")
 
+# basic scope setup
 def setup_scope(inst):
 	print(inst.query("*IDN?").strip())
-	send_command(inst,"SYSTem:DISPlay:UPDate ON")
 
-	# measurements
-	send_command(inst,"MEASUREMENT1:ENABLE OFF")
-	send_command(inst,"MEASUREMENT1:SOURCE C2")
-	send_command(inst,"MEASUREMENT1:MAIN PDELta")
-	send_command(inst,"MEASUREMENT1:ENABLE ON")
+	command_sequence = [
+		"SYSTem:DISPlay:UPDate ON",
+		"MEASUREMENT1:ENABLE OFF",
+		"MEASUREMENT1:SOURCE C2",
+		"MEASUREMENT1:MAIN PDELta",
+		"MEASUREMENT1:ENABLE ON",
 
-	send_command(inst,"MEASUREMENT2:ENABLE OFF")
-	send_command(inst,"MEASUREMENT2:SOURCE C4")
-	send_command(inst,"MEASUREMENT2:MAIN PDELta")
-	send_command(inst,"MEASUREMENT2:ENABLE ON")
+		"MEASUREMENT2:ENABLE OFF",
+		"MEASUREMENT2:SOURCE C4",
+		"MEASUREMENT2:MAIN PDELta",
+		"MEASUREMENT2:ENABLE ON",
 
-	send_command(inst,"MEASUREMENT3:ENABLE OFF")
-	send_command(inst,"MEASUREMENT3:SOURCE C2")
-	send_command(inst,"MEASUREMENT3:MAIN FREQ")
-	send_command(inst,"MEASUREMENT3:ENABLE ON")
+		"MEASUREMENT3:ENABLE OFF",
+		"MEASUREMENT3:SOURCE C2",
+		"MEASUREMENT3:MAIN FREQ",
+		"MEASUREMENT3:ENABLE ON",
+
+		""
+	]
+	try: 
+		for cmd in command_sequence:
+			if (mxo4.send_command(inst, cmd) == False):
+				print(f"'{cmd}' failed.")
+				exit()
+	except Exception as e:
+		print(str(e))
+		print("Failed to setup MXO4")
+		exit()
 
 def get_scope_meas(inst, voltage):
-	inst.write("SINGLE")
-	time.sleep(1) # check OPC register to see if we're ready
+	mxo4.send_command(inst,"SINGLE",0.1,False)
+
+	mxo4.scale_channel(inst, "2", "4")
 
 	meas1_value = inst.query("MEAS1:RES:ACT?") # ACTual is optional
 	c2_ptp = Quantity(meas1_value, "V")
@@ -126,7 +137,7 @@ def set_hmc_output_parameters(inst,volt_setting=5.55, curr_setting=0.005):
 	send_command(inst,hmc_current_cmd)
 	send_command(inst, "OUTP:MAST ON")
 
-setup_scope(mxo4)
+setup_scope(mxo4_scope)
 setup_hmc_smps(hmc_smps)
 setup_bald_func_gen(bald_func)
 
@@ -157,9 +168,11 @@ setup_bald_func_gen(bald_func)
 # 		get_scope_meas(mxo4, voltage)
 # 		#time.sleep(0.5)
 
+# print("Early exit")
+# exit()
 # input voltage
 #step_size = 10
-step_size = 3
+step_size = 30
 #voltage_settings = [0.1, 0.5, 1, 2]
 voltage_settings = [0.5, 1]
 for voltage in voltage_settings:
@@ -168,29 +181,35 @@ for voltage in voltage_settings:
 
 	func_output_voltage_cmd = f"VOLT {voltage}"
 	send_command(bald_func,func_output_voltage_cmd)
+	mxo4.scale_channel(mxo4_scope, "1", "2")  # meas, channel
 
+	time_base_scale = 4
 	for frequency in range(int(10e3),int(100e3),int(step_size * 1e3)):
 		func_command = "FREQ " + str(frequency)
 		send_command(bald_func,func_command)
-		time.sleep(0.25)
-		get_scope_meas(mxo4, voltage)
+		time.sleep(0.15)
+		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+		get_scope_meas(mxo4_scope, voltage)
 
 	for frequency in range(int(100e3),int(1e6),int(step_size * 10e3)):
 		func_command = "FREQ " + str(frequency)
 		send_command(bald_func,func_command)
 		time.sleep(0.25)
-		get_scope_meas(mxo4, voltage)
+		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+		get_scope_meas(mxo4_scope, voltage)
 		#time.sleep(0.5)
 
 	for frequency in range(int(1e6),int(10e6),int(step_size * 100e3)):
 		func_command = "FREQ " + str(frequency)
-		send_command(bald_func,func_command)
+		send_command(bald_func,func_command)	
 		time.sleep(0.25)
-		get_scope_meas(mxo4, voltage)
+		mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+		get_scope_meas(mxo4_scope, voltage)
 		#time.sleep(0.5)
 
 send_command(hmc_smps,"OUTP:MAST OFF")
 send_command(bald_func, "OUTP OFF")
+time.sleep(0.1) # return to local seems to be ingored if sent back to back
 send_command(bald_func, "SYST:LOC")
 
 #bald_func.write("SYST:LOC")
