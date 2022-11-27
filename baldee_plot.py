@@ -78,7 +78,11 @@ def setup_scope(inst):
 		"MEASUREMENT3:MAIN FREQ",
 		"MEASUREMENT3:ENABLE ON",
 
-		""
+		"MEAS4:ENABLE OFF",
+		"MEAS4:SOURCE C4,C2",
+		"MEAS4:MAIN PHASE",
+		"MEAS4:ENABLE ON",
+
 	]
 	try: 
 		for cmd in command_sequence:
@@ -109,8 +113,12 @@ def get_scope_meas(inst, csv, voltage):
 	c2_freq = Quantity(meas3_value, "Hz")
 	#meas3_value = str(meas3_value).strip()
 	#print(f"Frequency: {c2_freq}")
-	print(f"{voltage},{meas1_value},{meas2_value},{meas3_value}, ,{c2_freq}, {c2_ptp}, {c4_ptp}")
-	csv.writerow([voltage, meas3_value, meas1_value, meas2_value])
+
+	meas4_value = inst.query("MEAS4:RES:ACT?").strip()
+	phase_diff = meas4_value
+
+	print(f"{voltage},{meas1_value},{meas2_value},{meas3_value},{phase_diff},{c2_freq}, {c2_ptp}, {c4_ptp}")
+	csv.writerow([voltage, meas3_value, meas1_value, meas2_value, meas4_value])
 
 def setup_hmc_smps(inst):
 	# for i in range(1,4):
@@ -177,12 +185,12 @@ setup_bald_func_gen(bald_func)
 # creat
 filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
 with open(filename_str, 'w', newline='') as csvfile:
-	bode_log = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+	bode_log = csv.writer(csvfile, delimiter=',', quotechar='\\', quoting=csv.QUOTE_MINIMAL)
 	# input voltage
-	#step_size = 10
-	step_size = 30
-	#voltage_settings = [0.1, 0.5, 1, 2]
-	voltage_settings = [0.5, 1]
+	step_size = 10
+	#step_size = 30
+	voltage_settings = [0.1, 0.5, 1, 2]
+	#voltage_settings = [0.5, 1]
 
 	for voltage in voltage_settings:
 		#print(f"Sweeping for {voltage} V")
@@ -192,7 +200,7 @@ with open(filename_str, 'w', newline='') as csvfile:
 		send_command(bald_func,func_output_voltage_cmd)
 		mxo4.scale_channel(mxo4_scope, "1", "2")  # meas, channel
 
-		time_base_scale = 2
+		time_base_scale = 1.25
 		for frequency in range(int(10e3),int(100e3),int(step_size * 1e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)
