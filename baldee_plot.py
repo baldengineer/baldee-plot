@@ -10,14 +10,8 @@ from insts import instruments  # globals for VISA resource strings
 from insts import mxo4
 
 rm = pyvisa.ResourceManager()
-#rm.list_resources()
-#('ASRL1::INSTR', 'ASRL2::INSTR', 'GPIB0::12::INSTR')
 
-# bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00::INSTR')
-# mxo4 = rm.open_resource('USB0::2733::407::1335.5050k04-200191::0::INSTR')
-# hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
-# mcp_dmm = rm.open_resource('ASRL/dev/ttyUSB0::INSTR')
-
+# instrument ids from instruments.py
 bald_func  = rm.open_resource(instruments.func_id)
 mxo4_scope = rm.open_resource(instruments.scope_id)
 hmc_smps   = rm.open_resource(instruments.ps_id)
@@ -25,17 +19,39 @@ mcp_dmm    = rm.open_resource(instruments.dmm_id)
 
 # some instraments want a delay because they don't have an OPC query
 # or I am not using OPC
-bald_func.query_delay = 0.1
-mxo4_scope.query_delay = 0.1
+#mxo4_scope.query_delay = 0.1
 hmc_smps.query_delay = 0.1
 mcp_dmm.query_delay = 0.1
+bald_func.query_delay = 0.1
+
+# Configure the sweep
+# freq_step_size = 1   # Unnecessarily slow scanning mechanism
+# input_vpp_steps = [0.250, 0.500, 1.00, 2.00]
+freq_step_size = 30
+input_vpp_steps = [0.5, 1] # can just be one voltage for input
+
+# create csv file to capture results
+csv_filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
+
+
+def main():
+	setup_scope(mxo4_scope)
+	setup_hmc_smps(hmc_smps)
+	setup_bald_func_gen(bald_func)
+
+	with open(csv_filename_str, 'w', newline='') as csvfile:
+		sweep_input_voltage(mxo4_scope, csvfile)
+
+	send_command(hmc_smps,"OUTP:MAST OFF")
+	send_command(bald_func, "OUTP OFF")
+	bald_func.write("SYST:LOC") # query for error puts it back into remote!
 
 def send_command(inst, cmd, scpi_delay=0.01, debug=False):
 	if (debug): print(cmd)
 	inst.write(cmd)
 	time.sleep(scpi_delay)
 	error_str = str(inst.query("SYST:ERR?"))
-	if (debug): print(error_str)
+	if (debug): prinvoltage_settingst(error_str)
 	time.sleep(scpi_delay)
 	#if (debug): print("---")
 	return True
@@ -148,85 +164,47 @@ def set_hmc_output_parameters(inst,volt_setting=5.55, curr_setting=0.005):
 	send_command(inst,hmc_current_cmd)
 	send_command(inst, "OUTP:MAST ON")
 
-setup_scope(mxo4_scope)
-setup_hmc_smps(hmc_smps)
-setup_bald_func_gen(bald_func)
 
-
-# step through some frequencies
-
-######## Tried to 3 different VCCs (+/-)
-# for voltage in [5.0,10.0,15.0]:
-# 	#print(f"Sweeping for {voltage} V")
-# 	set_hmc_output_parameters(hmc_smps, voltage, 0.025)
-# 	for frequency in range(int(10e3),int(100e3),int(10e3)):
-# 		func_command = "FREQ " + str(frequency)
-# 		send_command(bald_func,func_command)
-# 		time.sleep(0.25)
-# 		get_scope_meas(mxo4, voltage)
-
-# 	for frequency in range(int(100e3),int(1e6),int(100e3)):
-# 		func_command = "FREQ " + str(frequency)
-# 		send_command(bald_func,func_command)
-# 		time.sleep(0.25)
-# 		get_scope_meas(mxo4, voltage)
-# 		#time.sleep(0.5)
-
-# 	for frequency in range(int(1e6),int(10e6),int(1e6)):
-# 		func_command = "FREQ " + str(frequency)
-# 		send_command(bald_func,func_command)
-# 		time.sleep(0.25)
-# 		get_scope_meas(mxo4, voltage)
-# 		#time.sleep(0.5)
-
-# print("Early exit")
-# exit()
-
-# creat
-filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
-with open(filename_str, 'w', newline='') as csvfile:
+	
+def sweep_input_voltage(inst, csvfile):
+	## Sweep frequency with different input voltages
 	bode_log = csv.writer(csvfile, delimiter=',', quotechar='\\', quoting=csv.QUOTE_MINIMAL)
-	# input voltage
-	step_size = 10
-	#step_size = 30
-	voltage_settings = [0.1, 0.5, 1, 2]
-	#voltage_settings = [0.5, 1]
+	header_line = [f'Input Voltage Sweep: {input_vpp_steps}']
+	#bode_log.writerow(header_line.replace(',',' '))
+	bode_log.writerow(header_line)
 
-	for voltage in voltage_settings:
+	for voltage in input_vpp_steps:
 		#print(f"Sweeping for {voltage} V")
 		set_hmc_output_parameters(hmc_smps, 5.00, 0.025)
 
 		func_output_voltage_cmd = f"VOLT {voltage}"
 		send_command(bald_func,func_output_voltage_cmd)
-		mxo4.scale_channel(mxo4_scope, "1", "2")  # meas, channel
+		mxo4.scale_channel(inst, "1", "2")  # meas, channel
 
-		time_base_scale = 1.25
-		for frequency in range(int(10e3),int(100e3),int(step_size * 1e3)):
+		time_base_scale = 0.25  # get enough cycles on screen for valid freq/phase meas
+		for frequency in range(int(10e3),int(100e3),int(freq_step_size * 1e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)
-			time.sleep(0.15)
-			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(mxo4_scope, bode_log, voltage)
+			#time.sleep(0.15)
+			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(inst, bode_log, voltage)
 
-		for frequency in range(int(100e3),int(1e6),int(step_size * 10e3)):
+		for frequency in range(int(100e3),int(1e6),int(freq_step_size * 10e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)
-			time.sleep(0.15)
-			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(mxo4_scope, bode_log, voltage)
+			#time.sleep(0.15)
+			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(inst, bode_log, voltage)
 			#time.sleep(0.5)
 
-		for frequency in range(int(1e6),int(10e6),int(step_size * 100e3)):
+		for frequency in range(int(1e6),int(10e6),int(freq_step_size * 100e3)):
 			func_command = "FREQ " + str(frequency)
 			send_command(bald_func,func_command)	
-			time.sleep(0.15)
-			mxo4.send_command(mxo4_scope, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
-			get_scope_meas(mxo4_scope, bode_log, voltage)
+			#time.sleep(0.15)
+			mxo4.send_command(inst, f"TIMEBASE:SCALE {((1/frequency) * time_base_scale)}")
+			get_scope_meas(inst, bode_log, voltage)
 			#time.sleep(0.5)
 
-send_command(hmc_smps,"OUTP:MAST OFF")
-send_command(bald_func, "OUTP OFF")
-time.sleep(0.25) # return to local seems to be ingored if sent back to back
-send_command(bald_func, "SYST:LOC")
+if __name__ == '__main__':
+	main()
 
-#bald_func.write("SYST:LOC")
