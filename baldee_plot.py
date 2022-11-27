@@ -73,12 +73,26 @@ def setup_bald_func_gen(inst):
 	# so baldee can touch the buttons
 	#send_command("SYST:LOC")
 
-# basic scope setup
 def setup_scope(inst):
 	print(inst.query("*IDN?").strip())
 
+	mxo4.send_command(inst, "*RST")
+	if (mxo4.wait_for_opc(inst) == False):
+		print("Preset MXO4 Failed")
+		exit()
+	mxo4.send_command(inst,"MEASUREMENT1:ENABLE ON")
+
 	command_sequence = [
 		"SYSTem:DISPlay:UPDate ON",
+
+		"CHAN1:STATe OFF",
+		"CHAN2:STATe ON",
+		"CHAN4:STATe ON",
+		"TRIGger:EVENt1:SOURce C2",
+
+		"HDEFinition:BWIDth 20E6",
+		"HDEFinition:STATe ON",
+
 		"MEASUREMENT1:ENABLE OFF",
 		"MEASUREMENT1:SOURCE C2",
 		"MEASUREMENT1:MAIN PDELta",
@@ -109,6 +123,9 @@ def setup_scope(inst):
 		print(str(e))
 		print("Failed to setup MXO4")
 		exit()
+
+	# print("Early Exit in Scope Setup")
+	# exit()
 
 def get_scope_meas(inst, csv, voltage):
 	mxo4.send_command(inst,"SINGLE",0.1,False)
