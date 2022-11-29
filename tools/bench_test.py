@@ -10,7 +10,7 @@ print(rm.list_resources())
 
 #bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455::INSTR')
 #mxo4 = rm.open_resource('TCPIP::192.168.128.23::INSTR')
-#hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
+hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
 #hmc_smps = rm.open_resource('USB0::0x0AAD::0x0135::051909041::INSTR')
 #inst = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455::INSTR')
 
@@ -21,9 +21,9 @@ print(rm.list_resources())
 
 #bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455::INSTR')
 bald_func = rm.open_resource('USB0::0x1AB1::0x0588::DG1D130400455\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00::INSTR')
-mxo4 = rm.open_resource('TCPIP::192.168.128.23::INSTR')
+#mxo4 = rm.open_resource('TCPIP::192.168.128.23::INSTR')
 #hmc_smps = rm.open_resource('TCPIP::192.168.128.24::INSTR')
-hmc_smps = rm.open_resource('USB0::0x0AAD::0x0135::051909041::INSTR')
+#hmc_smps = rm.open_resource('USB0::0x0AAD::0x0135::051909041::INSTR')
 mcp_dmm = rm.open_resource('ASRL/dev/ttyUSB0::INSTR')
 
 devices = [bald_func, mxo4, hmc_smps, mcp_dmm]

@@ -2,6 +2,8 @@ def connect_visa_mp730028(baud):
 	dmm = rm.open_resource(instruments_development.dmm_id)
 	dmm.baud_rate = baud
 	dmm.query_delay = 0.1
+	# dmm.read_termination = '\n'
+	# dmm.write_termination = '\r\n'
 	print(dmm.query('*IDN?'))
 	return dmm
 
@@ -11,6 +13,7 @@ def main():
 	print("Done.")	
 
 def setup_dmm_mp730028(inst, debug=False):
+	print(inst.query("*IDN?"))
 	#inst.write("*RST")
 	# inst.write("*OPC")
 	# time.sleep(0.1)

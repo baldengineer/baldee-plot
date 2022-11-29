@@ -14,20 +14,31 @@ from insts import mp730028
 rm = pyvisa.ResourceManager()
 
 # instrument ids from instruments.py
-bald_func  = rm.open_resource(instruments.func_id)
-mxo4_scope = rm.open_resource(instruments.scope_id)
-hmc_smps   = rm.open_resource(instruments.ps_id)
-mcp_dmm    = rm.open_resource(instruments.dmm_id)
+# if fails, check definitions in instruments.py
+# different resource strings for each instrument and resource
+try:
+	print("Opening Instruments...")
+	print("Function Generator:")
+	bald_func  = rm.open_resource(instruments.func_id)
+	print("MXO4 Oscilloscope")
+	mxo4_scope = rm.open_resource(instruments.scope_id)
+	print("HMC Power Supply")
+	hmc_smps   = rm.open_resource(instruments.ps_id)
+	print("MP730028 DMM")
+	mcp_dmm    = rm.open_resource(instruments.dmm_id)
+except Exception as e:
+	print(e)
+	exit()
 
 # some instraments want a delay because they don't have an OPC query
 # or I am not using OPC
 #mxo4_scope.query_delay = 0.1 # implemented OPC? for MXO4
 hmc_smps.query_delay = 0.1
-mcp_dmm.query_delay = 0.1
 bald_func.query_delay = 0.1
 
 # for the DMM
-mcp_dmm.bald_func = 115200
+mcp_dmm.baud_rate = 115200
+mcp_dmm.query_delay = 0.1
 
 # Configure the sweep
 # freq_step_size = 1   # Unnecessarily slow scanning mechanism
@@ -40,6 +51,9 @@ csv_filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
 
 
 def main():
+	print("\nSetting up mp730028 DMM")
+	mp730028.setup_dmm_mp730028(mcp_dmm)
+
 	print("Setting up MXO4 ")
 	setup_scope(mxo4_scope)
 
@@ -49,8 +63,6 @@ def main():
 	print("\nSetting up Bald Func Gen")
 	setup_bald_func_gen(bald_func)
 
-	print("\nSetting up mp730028 DMM")
-	mp730028.setup_dmm_mp730028(mcp_dmm)
 
 	with open(csv_filename_str, 'w', newline='') as csvfile:
 		sweep_input_voltage(mxo4_scope, csvfile)
