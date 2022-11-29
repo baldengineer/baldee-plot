@@ -44,11 +44,18 @@ bald_func.query_delay = 0.1
 mcp_dmm.baud_rate = 115200
 mcp_dmm.query_delay = 0.1
 
-# Configure the sweep
+### Configure the sweep
+## Four input voltages
 # freq_step_size = 1   # Unnecessarily slow scanning mechanism
 # input_vpp_steps = [0.250, 0.500, 1.00, 2.00]
-freq_step_size = 30
-input_vpp_steps = [0.5, 1] # can just be one voltage for input
+
+## Two input voltages, large step
+# freq_step_size = 30
+# input_vpp_steps = [0.5, 1] # can just be one voltage for input
+
+## One input voltage, small steps
+freq_step_size = 1   # Unnecessarily slow scanning mechanism
+input_vpp_steps = [1.00]
 
 # create csv file to capture results
 csv_filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
