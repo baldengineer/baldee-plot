@@ -11,20 +11,24 @@ from insts import mxo4
 from insts import mp730028
 
 # keeping this global because it is used by everything
-rm = pyvisa.ResourceManager()
+print("[Opening] Resource Manager\n")
+try:
+	rm = pyvisa.ResourceManager()
+except Exception as e:
+	print(e)
+	exit()
 
 # instrument ids from instruments.py
 # if fails, check definitions in instruments.py
 # different resource strings for each instrument and resource
 try:
-	print("Opening Instruments...")
-	print("Function Generator:")
+	print("[Opening] Function Generator")
 	bald_func  = rm.open_resource(instruments.func_id)
-	print("MXO4 Oscilloscope")
+	print("[Opening] MXO4 Oscilloscope")
 	mxo4_scope = rm.open_resource(instruments.scope_id)
-	print("HMC Power Supply")
+	print("[Opening] HMC Power Supply")
 	hmc_smps   = rm.open_resource(instruments.ps_id)
-	print("MP730028 DMM")
+	print("[Opening] MP730028 DMM")
 	mcp_dmm    = rm.open_resource(instruments.dmm_id)
 except Exception as e:
 	print(e)
@@ -51,22 +55,32 @@ csv_filename_str = f"captures/{time.strftime('%Y-%m-%d-%H-%M-%S')}.csv"
 
 
 def main():
-	print("\nSetting up mp730028 DMM")
-	mp730028.setup_dmm_mp730028(mcp_dmm)
+	config_instruments_start()
 
-	print("Setting up MXO4 ")
-	setup_scope(mxo4_scope)
-
-	print("\nSetting HMC Power Supply")
-	setup_hmc_smps(hmc_smps)
-	
-	print("\nSetting up Bald Func Gen")
-	setup_bald_func_gen(bald_func)
-
-
+	print("\n-------------------------")
+	print(f"[START] Measurement sweep saved to: {csv_filename_str}")
+	print("-------------------------\n")
 	with open(csv_filename_str, 'w', newline='') as csvfile:
 		sweep_input_voltage(mxo4_scope, csvfile)
 
+	config_instruments_stop()
+
+
+def config_instruments_start():
+	print("\n[CONFIG] mp730028 DMM")
+	mp730028.setup_dmm_mp730028(mcp_dmm)
+
+	print("\n[CONFIG] MXO4 ")
+	setup_scope(mxo4_scope)
+
+	print("\n[CONFIG] HMC Power Supply")
+	setup_hmc_smps(hmc_smps)
+	
+	print("\n[CONFIG] Bald Func Gen")
+	setup_bald_func_gen(bald_func)
+	return
+
+def config_instruments_stop():
 	send_command(hmc_smps,"OUTP:MAST OFF")
 	send_command(bald_func, "OUTP OFF")
 	bald_func.write("SYST:LOC") # query for error puts it back into remote!
