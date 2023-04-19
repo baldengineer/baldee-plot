@@ -2,8 +2,8 @@ import time    # for sleep
 import pyvisa  # for scpi
 
 #rm = pyvisa.ResourceManager('@py')
-#rm = pyvisa.ResourceManager('')
-print(rm.list_resources())
+rm = pyvisa.ResourceManager('')
+
 instruments = rm.list_resources()
 for inst in instruments:
 	if (inst.startswith('USB')):
